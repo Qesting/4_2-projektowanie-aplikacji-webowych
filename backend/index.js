@@ -5,6 +5,8 @@ const { Database } = require('node:sqlite')
 const migrate = require('./migrate')
 
 const app = express();
+app.use(express.json())
+
 const db = new Database('app.db')
 
 db.exec('CREATE TABLE IF NOT EXISTS migrations (signature TEXT PRIMARY KEY, timestamp INTEGER)')
@@ -71,6 +73,28 @@ app.get('/jokebook/categories/:category', (req, res) => {
   getRecordsStmt.close()
 
   res.json({jokes: records})
+})
+
+app.post('/jokebook/joke/:category', (req, res) => {
+  const categoryName = req.params.category
+  const getCategoriesStmt = db.prepare('SELECT * FROM categories WHERE name=?')
+  const category = getCategoriesStmt.get(categoryName)
+  getCategoriesStmt.close()
+
+  if (!category) {
+    res.status(404).json({error: `No jokes for category ${categoryName}`})
+    return
+  }
+
+  const { joke, response } = req.body
+  const getLastIdStmt = db.prepare('SELECT id FROM jokes ORDER BY id DESC LIMIT 1')
+  const lastId = getLastIdStmt.get()?.id ?? 1
+  getLastIdStmt.close()
+
+  const insertJokeStmt = db.prepare('INSERT INTO jokes (id, category_id, joke, response) VALUES (?, ?, ?, ?)')
+  insertJokeStmt.run(lastId + 1, category.id, joke, response)
+
+  res.json({status: 'success'})
 })
 
 const PORT = process.env.PORT || 3000;
